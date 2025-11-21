@@ -1,6 +1,6 @@
 PYTHON?=.venv/bin/python
 STREAMLIT?=.venv/bin/streamlit
-SPARK_SUBMIT?=spark-submit
+SPARK_SUBMIT?=.venv/bin/spark-submit
 JAVA_HOME?=/home/noahrd0/jdks/jdk-17.0.11+9
 HADOOP_HOME?=/home/noahrd0/hadoop-3.4.1
 HDFS_BIN?=$(HADOOP_HOME)/bin/hdfs
@@ -16,12 +16,13 @@ etl:
 	$(PYTHON) etl/transform.py
 
 spark-etl:
-	$(SPARK_SUBMIT) \
-		--master $${SPARK_MASTER:-local[*]} \
-		etl/spark_transform.py \
+	JAVA_HOME=$(JAVA_HOME) \
+	PYSPARK_PYTHON=$(PYTHON) \
+	$(PYTHON) etl/spark_transform.py \
 		--raw-base-uri $(HDFS_RAW) \
 		--curated-base-uri $(HDFS_CURATED) \
-		--local-mirror /home/noahrd0/Documents/ipssi_tp_data/data/curated
+		--local-mirror /home/noahrd0/Documents/ipssi_tp_data/data/curated \
+		--spark-conf spark.master=$${SPARK_MASTER:-local[*]}
 
 spark-pipeline:
 	@if [ ! -d "$(JAVA_HOME)" ]; then echo "JAVA_HOME invalide ($(JAVA_HOME))"; exit 1; fi
@@ -35,10 +36,10 @@ spark-pipeline:
 	JAVA_HOME=$(JAVA_HOME) $(HDFS_BIN) dfsadmin -safemode wait
 	JAVA_HOME=$(JAVA_HOME) $(HDFS_BIN) dfs -put -f data/raw/* /datalake/raw
 	@echo ">> ETL PySpark distribué"
-	HDFS_RAW=hdfs://localhost:9000/datalake/raw \
-	HDFS_CURATED=hdfs://localhost:9000/datalake/curated \
-	SPARK_MASTER=$${SPARK_MASTER:-local[*]} \
-	$(MAKE) spark-etl
+	$(MAKE) spark-etl \
+		HDFS_RAW=hdfs://localhost:9000/datalake/raw \
+		HDFS_CURATED=hdfs://localhost:9000/datalake/curated \
+		SPARK_MASTER=$${SPARK_MASTER:-local[*]}
 	@echo ">> Lancement du dashboard Streamlit"
 	$(MAKE) dashboard
 

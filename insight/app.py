@@ -275,10 +275,202 @@ def render_genre_report(films: pd.DataFrame) -> None:
         color="primary_genre",
     )
     st.plotly_chart(fig, width='stretch')
+    
+    st.markdown("---")
+    st.markdown("#### Genres les plus rentables")
+    
+    # Calcul de revenue_per_minute si absent
+    films_analysis = films.copy()
+    if "revenue_per_minute" not in films_analysis.columns:
+        films_analysis["revenue_per_minute"] = (
+            films_analysis["box_office_usd"] / films_analysis["runtime_minutes"]
+        )
+    
+    # Calcul de la rentabilité par genre
+    genre_profitability = (
+        films_analysis.dropna(subset=["primary_genre", "box_office_usd"])
+        .groupby("primary_genre")
+        .agg(
+            total_box_office=("box_office_usd", "sum"),
+            avg_box_office=("box_office_usd", "mean"),
+            count_films=("film_id", "count"),
+            avg_revenue_per_minute=("revenue_per_minute", "mean"),
+        )
+        .reset_index()
+        .sort_values("total_box_office", ascending=False)
+    )
+    
+    # Affichage des genres les plus rentables
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Top 10 genres par recettes totales**")
+        top_total = genre_profitability.head(10)
+        fig1 = px.bar(
+            top_total,
+            x="total_box_office",
+            y="primary_genre",
+            orientation="h",
+            hover_data=["count_films", "avg_box_office"],
+            labels={
+                "total_box_office": "Recettes totales ($)",
+                "primary_genre": "Genre",
+                "count_films": "Nombre de films",
+                "avg_box_office": "Recettes moyennes ($)",
+            },
+        )
+        fig1.update_layout(yaxis={"categoryorder": "total ascending"})
+        st.plotly_chart(fig1, use_container_width=True)
+    
+    with col2:
+        st.markdown("**Top 10 genres par recettes moyennes**")
+        top_avg = (
+            genre_profitability[genre_profitability["count_films"] >= 5]
+            .sort_values("avg_box_office", ascending=False)
+            .head(10)
+        )
+        if not top_avg.empty:
+            fig2 = px.bar(
+                top_avg,
+                x="avg_box_office",
+                y="primary_genre",
+                orientation="h",
+                hover_data=["count_films", "total_box_office"],
+                labels={
+                    "avg_box_office": "Recettes moyennes ($)",
+                    "primary_genre": "Genre",
+                    "count_films": "Nombre de films",
+                    "total_box_office": "Recettes totales ($)",
+                },
+            )
+            fig2.update_layout(yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("Pas assez de données pour calculer les moyennes fiables.")
+    
+    # Tableau récapitulatif
+    st.markdown("**Tableau récapitulatif par genre**")
+    genre_profitability_display = genre_profitability.copy()
+    genre_profitability_display["total_box_office"] = (
+        genre_profitability_display["total_box_office"] / 1_000_000
+    ).round(2)
+    genre_profitability_display["avg_box_office"] = (
+        genre_profitability_display["avg_box_office"] / 1_000_000
+    ).round(2)
+    genre_profitability_display["avg_revenue_per_minute"] = (
+        genre_profitability_display["avg_revenue_per_minute"] / 1_000_000
+    ).round(2)
+    genre_profitability_display = genre_profitability_display.rename(
+        columns={
+            "total_box_office": "Recettes totales (M$)",
+            "avg_box_office": "Recettes moyennes (M$)",
+            "count_films": "Nombre de films",
+            "avg_revenue_per_minute": "Revenus/min (M$)",
+        }
+    )
+    st.dataframe(
+        genre_profitability_display.style.format(
+            {
+                "Recettes totales (M$)": "{:.2f}",
+                "Recettes moyennes (M$)": "{:.2f}",
+                "Revenus/min (M$)": "{:.2f}",
+            }
+        ),
+        use_container_width=True,
+        height=400,
+    )
 
 
 def render_rentability_report(films: pd.DataFrame, people: pd.DataFrame) -> None:
     st.subheader("Rentabilité par acteurs / réalisateurs / budget proxy")
+    
+    # Évolution de la rentabilité moyenne au fil des années
+    st.markdown("#### Évolution de la rentabilité moyenne au fil des années")
+    films_yearly = films.dropna(subset=["year", "box_office_usd"])
+    
+    # Calcul de revenue_per_minute si absent
+    if "revenue_per_minute" not in films_yearly.columns:
+        films_yearly["revenue_per_minute"] = (
+            films_yearly["box_office_usd"] / films_yearly["runtime_minutes"]
+        )
+    
+    yearly_profitability = (
+        films_yearly.groupby("year")
+        .agg(
+            avg_box_office=("box_office_usd", "mean"),
+            avg_revenue_per_minute=("revenue_per_minute", "mean"),
+            count_films=("film_id", "count"),
+            median_box_office=("box_office_usd", "median"),
+        )
+        .reset_index()
+        .sort_values("year")
+    )
+    
+    # Filtrer les années avec au moins 5 films pour une meilleure représentativité
+    yearly_profitability_filtered = yearly_profitability[
+        yearly_profitability["count_films"] >= 5
+    ]
+    
+    st.markdown("**Recettes moyennes par année**")
+    fig_yearly_avg = px.line(
+        yearly_profitability_filtered,
+        x="year",
+        y="avg_box_office",
+        markers=True,
+        hover_data=["count_films", "median_box_office"],
+        labels={
+            "year": "Année",
+            "avg_box_office": "Recettes moyennes ($)",
+            "count_films": "Nombre de films",
+            "median_box_office": "Recettes médianes ($)",
+        },
+    )
+    fig_yearly_avg.update_traces(line_color="#1f77b4", line_width=3)
+    fig_yearly_avg.update_layout(
+        xaxis_title="Année",
+        yaxis_title="Recettes moyennes ($)",
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig_yearly_avg, width='stretch')
+    
+    # Statistiques récapitulatives
+    st.markdown("**Tendances observées**")
+    if not yearly_profitability_filtered.empty:
+        first_period = yearly_profitability_filtered.head(
+            len(yearly_profitability_filtered) // 3
+        )
+        last_period = yearly_profitability_filtered.tail(
+            len(yearly_profitability_filtered) // 3
+        )
+        
+        first_avg = first_period["avg_box_office"].mean()
+        last_avg = last_period["avg_box_office"].mean()
+        evolution_pct = ((last_avg - first_avg) / first_avg * 100) if first_avg > 0 else 0
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(
+                "Période ancienne (moyenne)",
+                f"${first_avg/1_000_000:.2f}M",
+                delta=f"{len(first_period)} ans",
+            )
+        with col2:
+            st.metric(
+                "Période récente (moyenne)",
+                f"${last_avg/1_000_000:.2f}M",
+                delta=f"{len(last_period)} ans",
+            )
+        with col3:
+            st.metric(
+                "Évolution",
+                f"{evolution_pct:.1f}%",
+                delta="hausse" if evolution_pct > 0 else "baisse",
+                delta_color="normal" if evolution_pct > 0 else "inverse",
+            )
+    
+    st.markdown("---")
+    st.markdown("#### Rentabilité par talents")
+    
     base = films[["film_id", "box_office_usd", "runtime_minutes"]].copy()
     base["revenue_per_minute"] = base["box_office_usd"] / base[
         "runtime_minutes"
