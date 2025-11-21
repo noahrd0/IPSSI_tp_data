@@ -37,7 +37,7 @@ graph LR
   subgraph ETL/Persistance
     SPARK[PySpark Jobs]
     HCUR[/HDFS /datalake/curated/]
-    DUCK[DuckDB + Parquet (miroir local)]
+    DUCK[DuckDB + Parquet]
   end
 
   subgraph Insight
